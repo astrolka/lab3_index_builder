@@ -13,7 +13,7 @@ int main() {
     size_t articlesSize;
     size_t pageSize = getpagesize();
 
-    cout << string("ёлы").compare(string("ялы")) << endl;
+    cout << string("a").compare(string("b")) << endl;
 
     cout << "Enter path to file with articles" << endl;
     cin >> articlesPath;

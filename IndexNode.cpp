@@ -1,12 +1,15 @@
 #include <stdlib.h>
+#include <string>
+
+using namespace std;
 
 class IndexNode {
 
 public:
-    uint8_t termSize;
-    char *term;
+    string term;
     size_t count;
     size_t offset;
     size_t leftOffset;
-    size_t rightOffset;    
+    size_t rightOffset;
+
 };
