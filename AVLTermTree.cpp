@@ -9,22 +9,26 @@ class AVLTermTree {
 public:
     AVLTermNode<Term> *root;
 
-    void insert(Term &term) {
-        root = &insert(root, term);
+    void insert(Term &term, unsigned int docId) {
+        if (root == nullptr) {
+            *root = AVLTermNode<Term>(term, docId);
+        }
+        root = &insert(root, term, docId);
     }
 
 private:
 
-    AVLTermNode<Term> &insert(AVLTermNode<Term> *fromNode, Term &term) {
+    AVLTermNode<Term> &insert(AVLTermNode<Term> *fromNode, Term &term, unsigned int docId) {
 
         if (fromNode == nullptr) {
-            return AVLTermNode<Term>(term);
+            return AVLTermNode<Term>(term, docId);
         }
 
         AVLTermNode<Term> &node = *fromNode;
 
         if (term.compare(node.term) == 0) {
             node.count++;
+            node.docIdSet.insert(docId);
         } else if (term.compare(node.term) < 0) {
             node.leftChild = insert(node.leftChild, term);
         } else {

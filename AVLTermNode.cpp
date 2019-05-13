@@ -1,12 +1,15 @@
 #include <stdlib.h>
 #include <string>
+#include <set>
 
 template <class Term>
 class AVLTermNode {
 
 public:
     Term &term;
-    size_t count;
+    unsigned int count;
+    std::set<unsigned int> docIdSet;
+
     AVLTermNode *leftChild;
     AVLTermNode *rightChild;
 
@@ -28,8 +31,9 @@ public:
         return leftHeight() - rightHeight();
     }
 
-    AVLTermNode(Term &term) {
+    AVLTermNode(Term &term, unsigned int docId) {
         this->term = term;
+        docIdSet.insert(docId);
         count = 1;
     }
 
