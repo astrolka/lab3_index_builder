@@ -3,97 +3,99 @@
 
 using namespace std;
 
-template <class Term>
 class AVLTermTree {
 
 public:
-    AVLTermNode<Term> *root;
+    AVLTermNode *root = nullptr;
+    size_t nodesCount = 0;
 
-    void insert(Term &term, unsigned int docId) {
+    void insert(string &term, unsigned int docId) {
         if (root == nullptr) {
-            *root = AVLTermNode<Term>(term, docId);
+            root = new AVLTermNode(term, docId);
+            nodesCount++;
+            return;
         }
-        root = &insert(root, term, docId);
+        root = insert(root, term, docId);
     }
 
 private:
 
-    AVLTermNode<Term> &insert(AVLTermNode<Term> *fromNode, Term &term, unsigned int docId) {
+    AVLTermNode *insert(AVLTermNode *node, string &term, unsigned int docId) {
 
-        if (fromNode == nullptr) {
-            return AVLTermNode<Term>(term, docId);
+        if (node == nullptr) {
+            nodesCount++;
+            return new AVLTermNode(term, docId);
         }
 
-        AVLTermNode<Term> &node = *fromNode;
-
-        if (term.compare(node.term) == 0) {
-            node.count++;
-            node.docIdSet.insert(docId);
-        } else if (term.compare(node.term) < 0) {
-            node.leftChild = insert(node.leftChild, term);
+        if (term.compare(node->term) == 0) {
+            node->count++;
+            node->docIdSet.insert(docId);
+            return node;
+        } else if (term.compare(node->term) < 0) {
+            node->leftChild = insert(node->leftChild, term, docId);
         } else {
-            node.rightChild = insert(node.rightChild, term);
+            node->rightChild = insert(node->rightChild, term, docId);
         }
 
-        AVLTermNode<Term> &balancedNode = balanced(node);
-        balancedNode.height = max(balancedNode.leftHeight(), balancedNode.rightHeight()) + 1;
+        AVLTermNode *balancedNode = balanced(node);
+        balancedNode->height = max(balancedNode->leftHeight(), balancedNode->rightHeight()) + 1;
 
         return balancedNode;
     }
 
-    AVLTermNode<Term> &balanced(AVLTermNode<Term> &node) {
-        if (node.balanceFactor() == 2 && node.leftChild != nullptr && node.leftChild->balanceFactor() == -1) {
-            return leftRightRotate();
-        } else if (node.balanceFactor() == 2) {
+    AVLTermNode *balanced(AVLTermNode *node) {
+        if (node->balanceFactor() == 2 && node->leftChild != nullptr && node->leftChild->balanceFactor() == -1) {
+            return leftRightRotate(node);
+        } else if (node->balanceFactor() == 2) {
             return rightRotate(node);
-        } else if (node.balanceFactor() == -2 && node.rightChild != nullptr && node.rightChild->balanceFactor() == 1) {
+        } else if (node->balanceFactor() == -2 && node->rightChild != nullptr && node->rightChild->balanceFactor() == 1) {
             return rightLeftRotate(node);
-        } else if (node.balanceFactor() == -2) {
+        } else if (node->balanceFactor() == -2) {
             return leftRotate(node);
         }
         return node;
     }
 
-    AVLTermNode<Term> &leftRotate(AVLTermNode<Term> &node) {
-        AVLTermNode<Term> *pivot = node.rightChild;
+    AVLTermNode *leftRotate(AVLTermNode *node) {
+        AVLTermNode *pivot = node->rightChild;
 
-        node.rightChild = pivot->leftChild;
+        node->rightChild = pivot->leftChild;
         pivot->leftChild = node;
 
-        node.height = max(node.leftHeight(), node.rightHeight()) + 1;
+        node->height = max(node->leftHeight(), node->rightHeight()) + 1;
         pivot->height = max(pivot->leftHeight(), pivot->rightHeight()) + 1;
 
-        return *pivot;
+        return pivot;
     }
 
-    AVLTermNode<Term> &rightRotate(AVLTermNode<Term> &node) {
-        AVLTermNode<Term> *pivot = node.leftChild;
+    AVLTermNode *rightRotate(AVLTermNode *node) {
+        AVLTermNode *pivot = node->leftChild;
 
-        node.leftChild = pivot->rightChild;
+        node->leftChild = pivot->rightChild;
         pivot->rightChild = node;
 
-        node.height = max(node.leftHeight(), node.rightHeight()) + 1;
+        node->height = max(node->leftHeight(), node->rightHeight()) + 1;
         pivot->height = max(pivot->leftHeight(), pivot->rightHeight()) + 1;
 
-        return *pivot;
+        return pivot;
     }
 
-    AVLTermNode<Term> &rightLeftRotate(AVLTermNode<Term> &node) {
-        if (node.rightChild == nullptr) {
+    AVLTermNode *rightLeftRotate(AVLTermNode *node) {
+        if (node->rightChild == nullptr) {
             return node;
         }
 
-        node.rightChild = &rightRotate(*(node.rightChild));
+        node->rightChild = rightRotate(node->rightChild);
 
         return leftRotate(node);
     }
 
-    AVLTermNode<Term> &leftRightRotate(AVLTermNode<Term> &node) {
-        if (node.leftChild == nullptr) {
+    AVLTermNode *leftRightRotate(AVLTermNode *node) {
+        if (node->leftChild == nullptr) {
             return node;
         }
 
-        node.leftChild = &leftRotate(*(node.leftChild));
+        node->leftChild = leftRotate(node->leftChild);
 
         return rightRotate(node);
     }

@@ -2,18 +2,19 @@
 #include <string>
 #include <set>
 
-template <class Term>
+using namespace std;
+
 class AVLTermNode {
 
 public:
-    Term &term;
+    string term;
     unsigned int count;
     std::set<unsigned int> docIdSet;
 
-    AVLTermNode *leftChild;
-    AVLTermNode *rightChild;
+    AVLTermNode *leftChild = nullptr;
+    AVLTermNode *rightChild = nullptr;
 
-    size_t height;
+    size_t height = 0;
 
     size_t leftHeight() {
         if (leftChild == nullptr) {
@@ -31,10 +32,14 @@ public:
         return leftHeight() - rightHeight();
     }
 
-    AVLTermNode(Term &term, unsigned int docId) {
-        this->term = term;
+    AVLTermNode(string t, unsigned int docId) {
+        term = t;
         docIdSet.insert(docId);
         count = 1;
+    }
+
+    ~AVLTermNode() {
+        delete this;
     }
 
 };

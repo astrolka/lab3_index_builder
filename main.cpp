@@ -5,25 +5,34 @@
 #include <unistd.h>
 #include <regex>
 #include <chrono>
+#include <fstream>
+#include <set>
 #include "AVLTermTree.cpp"
+#include "BinaryMmap.cpp"
+#include "utils.cpp"
 
 using namespace std;
 using namespace std::chrono;
 
+void saveIndex(AVLTermNode *node, BinaryMmap &mainIndex, BinaryMmap &coordBlocks, size_t at = 0);
 string &lowerCaseStr(string &str);
 
 int main() {
 
-    string articlesPath = "/Users/fukingmac/MEGA/town_planing_articles/town_planing_articles.txt";
+    string articlesPath;
     struct stat s;
     size_t articlesSize;
     size_t pageSize = getpagesize();
 
     cout << "Enter path to file with articles" << endl;
-//    cin >> articlesPath;
+    cin >> articlesPath;
 
     int articlesFD = open(articlesPath.c_str(), O_RDONLY);
     fstat(articlesFD, &s);
+
+    BinaryMmap mainIndex("mainIndex.bin", 10000);
+    BinaryMmap coordBlocks("coordBlocks.bin");
+    ofstream directIndex("directIndex.txt", ios_base::app);
 
     articlesSize = s.st_size;
     articlesSize += pageSize - (articlesSize % pageSize);
@@ -31,7 +40,7 @@ int main() {
     char *text = (char *) mmap(0, articlesSize, PROT_READ, MAP_PRIVATE, articlesFD, 0);
     string textObj(text);
 
-    AVLTermTree<string> termTree;
+    AVLTermTree indexTree;
 
     regex wordRX("(?:\\w|\\xD0[\\x80-\\xBF]|\\xD1[\\x80-\\x9F]|\\xCC[\\x80-\\xBB])+");
     regex boundaryRX("wiki_search_engine_38hf91\\|title=(.+)\\|pageId=(\\d+)\\|docId=(\\d+)\\|size=(\\d+)");
@@ -41,7 +50,7 @@ int main() {
     long long int articleIndexTime = 0;
 
     long long int termCount = 0;
-    int termlength = 0;
+    double termLength = 0;
 
     long int kbCount = 0;
     long int byteBuffer = 0;
@@ -66,35 +75,69 @@ int main() {
             string word = regex_replace(it->str(), graveRX, "");
             lowerCaseStr(word);
 
-            termTree.insert(word, docId);
+            indexTree.insert(word, docId);
 
-            termlength = (termlength * termCount + word.length()) / termCount;
+            termLength = (termLength * (double)termCount + (double)word.length()) / (double)(termCount + 1);
             termCount++;
             byteBuffer += word.length();
             if (byteBuffer >= 1024) {
                 high_resolution_clock::time_point now = high_resolution_clock::now();
                 kbIndexTime = (kbIndexTime * kbCount + duration_cast<microseconds>(now - kbTimer).count()) / (kbCount + 1);
-                kbTimer = high_resolution_clock::now();
+                kbTimer = now;
                 kbCount++;
+                byteBuffer = 0;
             }
         }
 
-        //here save data for direct index
+        directIndex << "docId=" << docId << "|title=" << articleTitle << "|pageId=" << pageId << endl;
+        cout << docId << endl;
 
         high_resolution_clock::time_point now = high_resolution_clock::now();
-        articleIndexTime = (articleIndexTime * articleCounter + (now - articleTimer).count()) / (articleCounter + 1);
+        articleIndexTime = (articleIndexTime * articleCounter + duration_cast<milliseconds>(now - articleTimer).count()) / (articleCounter + 1);
         articleCounter++;
     }
-
-    //here save tree(index)
 
     high_resolution_clock::time_point now = high_resolution_clock::now();
 
     cout << "total time in milliseconds:\t" << duration_cast<milliseconds>(now - totalTimer).count() << endl;
     cout << "time per article in milliseconds:\t" << articleIndexTime << endl;
     cout << "time per kb in microseconds:\t" << kbIndexTime << endl;
+    cout << "term count:\t" << termCount << "\tterm size:\t" << termLength << endl;
+
+    saveIndex(indexTree.root, mainIndex, coordBlocks);
+
+    directIndex.close();
+    close(articlesFD);
+    munmap(text, articlesSize);
+    mainIndex.terminate();
+    coordBlocks.terminate();
 
     return 0;
+}
+
+void saveIndex(AVLTermNode *node, BinaryMmap &mainIndex, BinaryMmap &coordBlocks, size_t at) {
+    size_t writePosition = mainIndex.currentPosition();
+    at = (at == 0) ? writePosition : at;
+
+    mainIndex.writeInt(node->term.length(), TERM_SIZE_CLUSTER, at);
+    mainIndex.writeStr(node->term, at);
+    mainIndex.writeInt(node->docIdSet.size(), DOC_COUNT_CLUSTER, at);
+    mainIndex.writeInt(node->count, TOTAL_COUNT_CLUSTER, at);
+    mainIndex.writeInt(coordBlocks.currentPosition(), COORD_BLOCKS_OFFSET_CLUSTER, at);
+    mainIndex.writeInt(mainIndex.currentPosition() + LEFT_OFFSET_CLUSTER + RIGHT_OFFSET_CLUSTER, LEFT_OFFSET_CLUSTER, at);    //left offset
+
+    coordBlocks.writeCollection<set<unsigned int>, set<unsigned int>::iterator>(node->docIdSet);
+
+    if (node->leftChild != nullptr)
+        saveIndex(node->leftChild, mainIndex, coordBlocks, mainIndex.currentPosition() + RIGHT_OFFSET_CLUSTER);
+
+    size_t rightOffset = writePosition + TERM_SIZE_CLUSTER + node->term.length() + DOC_COUNT_CLUSTER
+                         + TOTAL_COUNT_CLUSTER + COORD_BLOCKS_OFFSET_CLUSTER + LEFT_OFFSET_CLUSTER;
+    mainIndex.writeInt(mainIndex.currentPosition(), RIGHT_OFFSET_CLUSTER, rightOffset);
+
+    if (node->rightChild != nullptr)
+        saveIndex(node->rightChild, mainIndex, coordBlocks);
+
 }
 
 string &lowerCaseStr(string &str) {

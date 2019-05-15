@@ -1,0 +1,6 @@
+const int TERM_SIZE_CLUSTER = 1;
+const int DOC_COUNT_CLUSTER = 2;
+const int TOTAL_COUNT_CLUSTER = 4;
+const int COORD_BLOCKS_OFFSET_CLUSTER = 4;
+const int LEFT_OFFSET_CLUSTER = 4;
+const int RIGHT_OFFSET_CLUSTER = 4;
