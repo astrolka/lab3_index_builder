@@ -59,6 +59,8 @@ int main() {
     high_resolution_clock::time_point totalTimer = high_resolution_clock::now();
     high_resolution_clock::time_point kbTimer = high_resolution_clock::now();
 
+
+
     for (sregex_iterator it(textObj.begin(), textObj.end(), boundaryRX); it != sregex_iterator(); ++it) {
 
         high_resolution_clock::time_point articleTimer = high_resolution_clock::now();
