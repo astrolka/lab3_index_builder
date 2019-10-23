@@ -69,7 +69,7 @@ public:
         if (onBytes > remainingSpace())
             increaseSize();
 
-        for (int i = onBytes; i >= 0; --i) {
+        for (int i = onBytes - 1; i >= 0; --i) {
             uint8_t byte = a & 0xFF;
             map[writeAt + i] = byte;
             a >>= 8;
@@ -93,10 +93,9 @@ public:
         return string_view(start, length);
     }
 
-    template <class Int>
-    Int readInt(size_t &location, int length = 4) {
-        Int result = 0;
-        for (int n = 0; n < length; ++n)
+    size_t readInt(size_t &location, int length = 4) {
+        size_t result = 0;
+        for (int n = location; n < length + location; ++n)
             result = (result << 8) + (uint8_t)map[n];
         return result;
     }
