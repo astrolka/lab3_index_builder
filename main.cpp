@@ -14,74 +14,62 @@
 using namespace std;
 using namespace std::chrono;
 
+static size_t termCount = 0;
 void saveIndex(AVLTermNode *node, BinaryMmap &mainIndex, BinaryMmap &coordBlocks, size_t at = 0);
 string &lowerCaseStr(string &str);
 
 int main() {
 
-    string articlesPath;
-    struct stat s;
-    size_t articlesSize;
-    size_t pageSize = getpagesize();
+    string tokensPath = "tokens.bin";
 
-    cout << "Enter path to file with articles" << endl;
-    cin >> articlesPath;
+    cout << "Enter path to file with tokens" << endl;
+//    cin >> tokensPath;
 
-    int articlesFD = open(articlesPath.c_str(), O_RDONLY);
-    fstat(articlesFD, &s);
+    BinaryMmap tokens(tokensPath, 0);
+    tokens.updateCurrentPosition();
 
-    BinaryMmap mainIndex("mainIndex.bin", 10000);
+    remove("reverseIndex.bin");
+    remove("coordBlocks.bin");
+    BinaryMmap mainIndex("reverseIndex.bin", 10000);
     BinaryMmap coordBlocks("coordBlocks.bin");
-    ofstream directIndex("directIndex.txt", ios_base::app);
-
-    articlesSize = s.st_size;
-    articlesSize += pageSize - (articlesSize % pageSize);
-
-    char *text = (char *) mmap(0, articlesSize, PROT_READ, MAP_PRIVATE, articlesFD, 0);
-    string textObj(text);
 
     AVLTermTree indexTree;
 
-    regex wordRX("(?:\\w|\\xD0[\\x80-\\xBF]|\\xD1[\\x80-\\x9F]|\\xCC[\\x80-\\xBB])+");
-    regex boundaryRX("wiki_search_engine_38hf91\\|title=(.+)\\|pageId=(\\d+)\\|docId=(\\d+)\\|size=(\\d+)");
     regex graveRX("\\xCC[\\x80-\\xBB]");
 
-    unsigned int articleCounter = 0;
-    long long int articleIndexTime = 0;
+    size_t articleCounter = 0;
+    size_t articleIndexTime = 0;
 
-    long long int termCount = 0;
+    size_t totalTermCount = 0;
     double termLength = 0;
 
-    long int kbCount = 0;
-    long int byteBuffer = 0;
-    long long int kbIndexTime = 0;
+    unsigned kbCount = 0;
+    unsigned byteBuffer = 0;
+    size_t kbIndexTime = 0;
 
     high_resolution_clock::time_point totalTimer = high_resolution_clock::now();
     high_resolution_clock::time_point kbTimer = high_resolution_clock::now();
+    high_resolution_clock::time_point articleTimer = high_resolution_clock::now();
 
+    int prevDocId = 0;
 
+    while (tokens.currentPosition() < tokens.writtenBytes()) {
+        int docId = tokens.readInt(DOC_ID_C);
+        int termPerArticleCount = tokens.readInt(TERM_COUNT_C);
 
-    for (sregex_iterator it(textObj.begin(), textObj.end(), boundaryRX); it != sregex_iterator(); ++it) {
+        while (termPerArticleCount) {
+            int tokenLen = tokens.readInt(TERM_SIZE_C);
+            string_view token = tokens.readStr(tokenLen);
 
-        high_resolution_clock::time_point articleTimer = high_resolution_clock::now();
+            string term = regex_replace(string(token), graveRX, "");
+            lowerCaseStr(term);
 
-        smatch m = *it;
+            indexTree.insert(term, docId);
 
-        string articleTitle = m.str(1);
-        int pageId = atoi(m.str(2).c_str());
-        int docId = atoi(m.str(3).c_str());
-        int articleSize = atoi(m.str(4).c_str());
+            termLength = (termLength * (double)totalTermCount + (double)term.length()) / (double)(totalTermCount + 1);
+            totalTermCount++;
+            byteBuffer += term.length();
 
-        string article = textObj.substr(m.position() + m.str().length() + 1, articleSize);
-        for (sregex_iterator it(article.begin(), article.end(), wordRX); it != sregex_iterator(); ++it) {
-            string word = regex_replace(it->str(), graveRX, "");
-            lowerCaseStr(word);
-
-            indexTree.insert(word, docId);
-
-            termLength = (termLength * (double)termCount + (double)word.length()) / (double)(termCount + 1);
-            termCount++;
-            byteBuffer += word.length();
             if (byteBuffer >= 1024) {
                 high_resolution_clock::time_point now = high_resolution_clock::now();
                 kbIndexTime = (kbIndexTime * kbCount + duration_cast<microseconds>(now - kbTimer).count()) / (kbCount + 1);
@@ -89,28 +77,27 @@ int main() {
                 kbCount++;
                 byteBuffer = 0;
             }
+
+            termPerArticleCount--;
         }
 
-        directIndex << "docId=" << docId << "|title=" << articleTitle << "|pageId=" << pageId << endl;
-        cout << docId << endl;
-
         high_resolution_clock::time_point now = high_resolution_clock::now();
-        articleIndexTime = (articleIndexTime * articleCounter + duration_cast<milliseconds>(now - articleTimer).count()) / (articleCounter + 1);
+        articleIndexTime = (articleIndexTime * articleCounter + duration_cast<microseconds>(now - articleTimer).count()) / (articleCounter + 1);
+        articleTimer = now;
         articleCounter++;
     }
 
     high_resolution_clock::time_point now = high_resolution_clock::now();
 
     cout << "total time in milliseconds:\t" << duration_cast<milliseconds>(now - totalTimer).count() << endl;
-    cout << "time per article in milliseconds:\t" << articleIndexTime << endl;
+    cout << "time per article in microseconds:\t" << articleIndexTime << endl;
     cout << "time per kb in microseconds:\t" << kbIndexTime << endl;
-    cout << "term count:\t" << termCount << "\tterm size:\t" << termLength << endl;
 
     saveIndex(indexTree.root, mainIndex, coordBlocks);
 
-    directIndex.close();
-    close(articlesFD);
-    munmap(text, articlesSize);
+    cout << "term count:\t" << termCount << "\tterm size:\t" << termLength << endl;
+
+    tokens.terminate();
     mainIndex.terminate();
     coordBlocks.terminate();
 
@@ -118,27 +105,27 @@ int main() {
 }
 
 void saveIndex(AVLTermNode *node, BinaryMmap &mainIndex, BinaryMmap &coordBlocks, size_t at) {
-    size_t writePosition = mainIndex.currentPosition();
-    at = (at == 0) ? writePosition : at;
+    termCount++;
+    size_t writePosition = at ?: mainIndex.currentPosition();
 
-    mainIndex.writeInt(node->term.length(), TERM_SIZE_CLUSTER, at);
-    mainIndex.writeStr(node->term, at);
-    mainIndex.writeInt(node->docIdSet.size(), DOC_COUNT_CLUSTER, at);
-    mainIndex.writeInt(node->count, TOTAL_COUNT_CLUSTER, at);
-    mainIndex.writeInt(coordBlocks.currentPosition(), COORD_BLOCKS_OFFSET_CLUSTER, at);
-    mainIndex.writeInt(mainIndex.currentPosition() + LEFT_OFFSET_CLUSTER + RIGHT_OFFSET_CLUSTER, LEFT_OFFSET_CLUSTER, at);    //left offset
+    mainIndex.writeInt(node->term.length(), TERM_SIZE_C, writePosition);
+    mainIndex.writeStr(node->term);
+    mainIndex.writeInt(node->docIdSet.size(), DOC_COUNT_C);
+    mainIndex.writeInt(node->count, TOTAL_COUNT_C);
+    mainIndex.writeInt(coordBlocks.currentPosition(), COORD_BLOCKS_O_C);
+
+    writePosition = mainIndex.currentPosition();
 
     coordBlocks.writeCollection<set<unsigned int>, set<unsigned int>::iterator>(node->docIdSet);
 
     if (node->leftChild != nullptr)
-        saveIndex(node->leftChild, mainIndex, coordBlocks, mainIndex.currentPosition() + RIGHT_OFFSET_CLUSTER);
+        saveIndex(node->leftChild, mainIndex, coordBlocks, writePosition + RIGHT_O_C);
 
-    size_t rightOffset = writePosition + TERM_SIZE_CLUSTER + node->term.length() + DOC_COUNT_CLUSTER
-                         + TOTAL_COUNT_CLUSTER + COORD_BLOCKS_OFFSET_CLUSTER + LEFT_OFFSET_CLUSTER;
-    mainIndex.writeInt(mainIndex.currentPosition(), RIGHT_OFFSET_CLUSTER, rightOffset);
-
-    if (node->rightChild != nullptr)
-        saveIndex(node->rightChild, mainIndex, coordBlocks);
+    if (node->rightChild != nullptr) {
+        size_t rightChildOffset = mainIndex.currentPosition() + RIGHT_O_C;
+        mainIndex.writeInt(rightChildOffset, RIGHT_O_C, writePosition);
+        saveIndex(node->rightChild, mainIndex, coordBlocks, rightChildOffset);
+    }
 
 }
 
